@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    if (!localStorage.getItem("rentreino_token")) {
+    if (!localStorage.getItem("rentalreo_token")) {
       setLoading(false);
       return;
     }
@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
       const data = await api("/auth/me");
       setUser(data.user);
     } catch {
-      localStorage.removeItem("rentreino_token");
+      localStorage.removeItem("rentalreo_token");
       setUser(null);
     } finally {
       setLoading(false);
@@ -27,11 +27,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     refresh();
     const handler = () => {
-      localStorage.removeItem("rentreino_token");
+      localStorage.removeItem("rentalreo_token");
       setUser(null);
     };
-    window.addEventListener("rentreino:unauthorized", handler);
-    return () => window.removeEventListener("rentreino:unauthorized", handler);
+    window.addEventListener("rentalreo:unauthorized", handler);
+    return () => window.removeEventListener("rentalreo:unauthorized", handler);
   }, []);
 
   const login = async (email, password) => {
@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem("rentreino_token", data.token);
+    localStorage.setItem("rentalreo_token", data.token);
     setUser(data.user);
     return data.user;
   };
@@ -49,12 +49,12 @@ export function AuthProvider({ children }) {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    localStorage.setItem("rentreino_token", data.token);
+    localStorage.setItem("rentalreo_token", data.token);
     setUser(data.user);
   };
 
   const logout = () => {
-    localStorage.removeItem("rentreino_token");
+    localStorage.removeItem("rentalreo_token");
     setUser(null);
   };
   return (

@@ -1,11 +1,10 @@
-// export const API_URL =
-//   import.meta.env.VITE_API_URL || "http://142.93.58.173:5001/api";
+export const API_URL =
+  import.meta.env.VITE_API_URL || "http://142.93.58.173:5001/api";
 
-export const API_URL = "http://142.93.58.173:5001/api";
 export const ASSET_BASE = API_URL.replace(/\/api\/?$/, "");
 
 export async function api(path, options = {}) {
-  const token = localStorage.getItem("rentreino_token");
+  const token = localStorage.getItem("rentalreo_token");
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   const isForm = options.body instanceof FormData;
@@ -18,7 +17,7 @@ export async function api(path, options = {}) {
     : await response.text();
   if (!response.ok) {
     if (response.status === 401)
-      window.dispatchEvent(new Event("rentreino:unauthorized"));
+      window.dispatchEvent(new Event("rentalreo:unauthorized"));
     throw new Error(data?.message || data || "Request failed");
   }
   return data;

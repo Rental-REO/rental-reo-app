@@ -58,7 +58,7 @@ export default function Layout() {
         <div className="brand">
           <div className="brand-mark">R</div>
           <div>
-            <strong>RentREINO</strong>
+            <strong>Rental REO</strong>
             <span>Property Management</span>
           </div>
         </div>

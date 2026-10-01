@@ -31,7 +31,7 @@ export default function Register() {
       <div className="auth-visual">
         <div className="auth-brand">
           <div className="brand-mark light">R</div>
-          <strong>RentREINO</strong>
+          <strong>Rental REO</strong>
         </div>
         <div className="auth-copy">
           <span>Built for independent landlords.</span>
@@ -46,7 +46,7 @@ export default function Register() {
         <form className="auth-form" onSubmit={submit}>
           <div className="auth-mobile-brand">
             <div className="brand-mark">R</div>
-            <strong>RentREINO</strong>
+            <strong>Rental REO</strong>
           </div>
           <span className="eyebrow">Owner account</span>
           <h2>Create your workspace</h2>
