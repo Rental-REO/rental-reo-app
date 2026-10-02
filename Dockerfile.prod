@@ -24,7 +24,9 @@ RUN chown -R app:app /app
 
 USER app
 
-ENV VITE_API_URL=http://142.93.58.173:5001/api
+ENV VITE_API_URL=http://64.225.63.84/:5001/api
+# ENV VITE_API_URL=http://localhost:5001/api
+
 
 RUN npm run build
 

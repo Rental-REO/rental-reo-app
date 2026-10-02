@@ -1,5 +1,5 @@
 export const API_URL =
-  import.meta.env.VITE_API_URL || "http://142.93.58.173:5001/api";
+  import.meta.env.VITE_API_URL || "http://64.225.63.84:5001/api";
 
 export const ASSET_BASE = API_URL.replace(/\/api\/?$/, "");
 
