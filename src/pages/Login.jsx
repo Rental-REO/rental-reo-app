@@ -6,8 +6,8 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    email: "owner@example.com",
-    password: "Demo123!",
+    email: "",
+    password: "",
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,6 +72,7 @@ export default function Login() {
               type="email"
               required
               value={form.email}
+              placeholder="Email"
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </label>
@@ -81,6 +82,7 @@ export default function Login() {
               type="password"
               required
               value={form.password}
+              placeholder="Password"
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
