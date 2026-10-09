@@ -58,6 +58,7 @@ export default function Register() {
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Full Name"
             />
           </label>
           <label className="field">
@@ -77,6 +78,7 @@ export default function Register() {
               required
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="Email"
             />
           </label>
           <label className="field">
@@ -87,6 +89,7 @@ export default function Register() {
               required
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="Password"
             />
           </label>
           <button className="btn primary full" disabled={busy}>
