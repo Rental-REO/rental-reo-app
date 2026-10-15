@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Elements,
-  PaymentElement,
-  useElements,
-  useStripe,
-} from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
+
+import { stripePromise } from "../lib/stripe.js";
+
+import RentPaymentForm from "../components/payments/RentPaymentForm.jsx";
 import { api, money, shortDate } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -20,10 +18,6 @@ import {
   Toast,
 } from "../components/UI.jsx";
 
-const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
-  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
-  : null;
-
 export default function Rent() {
   const { user } = useAuth();
   const [charges, setCharges] = useState(null),
@@ -31,10 +25,13 @@ export default function Rent() {
     [leases, setLeases] = useState([]),
     [payOpen, setPayOpen] = useState(false),
     [manualOpen, setManualOpen] = useState(false),
-    [clientSecret, setClientSecret] = useState(""),
-    [amount, setAmount] = useState(""),
-    [leaseId, setLeaseId] = useState(""),
     [toast, setToast] = useState("");
+
+  const [clientSecret, setClientSecret] = useState(""),
+    [amount, setAmount] = useState(""),
+    [checkoutAmount, setCheckoutAmount] = useState(0),
+    [leaseId, setLeaseId] = useState("");
+
   const load = async () => {
     const [a, b, c] = await Promise.all([
       api("/charges"),
@@ -44,31 +41,93 @@ export default function Rent() {
     setCharges(a);
     setPayments(b);
     setLeases(c);
-    if (user.role === "tenant" && c[0]) setLeaseId(c[0]._id);
+    if (user.role === "tenant") {
+      const activeLease = c.find((lease) => lease.status === "active");
+
+      if (activeLease) {
+        setLeaseId((current) =>
+          current && c.some((lease) => lease._id === current)
+            ? current
+            : activeLease._id,
+        );
+      }
+    }
   };
   useEffect(() => {
     load();
   }, []);
+
+  const selectedLeaseCharges = useMemo(() => {
+    if (!charges) {
+      return [];
+    }
+
+    if (user.role !== "tenant" || !leaseId) {
+      return charges;
+    }
+
+    return charges.filter((charge) => {
+      const chargeLeaseId = charge.leaseId?._id || charge.leaseId;
+
+      return String(chargeLeaseId) === String(leaseId);
+    });
+  }, [charges, leaseId, user.role]);
+
   const openBalance = useMemo(
     () =>
-      charges
-        ?.filter((c) => ["open", "partial"].includes(c.status))
-        .reduce((s, c) => s + c.balance, 0) || 0,
-    [charges],
+      selectedLeaseCharges
+        .filter((charge) => ["open", "partial"].includes(charge.status))
+        .reduce((total, charge) => total + Number(charge.balance || 0), 0),
+    [selectedLeaseCharges],
   );
-  const beginPay = async () => {
-    const numeric = Number(amount || openBalance);
-    if (!numeric || !leaseId)
-      return setToast("Enter an amount and select a lease");
+
+  const beginPay = async (requestedAmount = null) => {
+    const rawAmount = requestedAmount !== null ? requestedAmount : amount;
+
+    const numericAmount = Number.parseFloat(
+      String(rawAmount).replace(/[$,]/g, ""),
+    );
+
+    console.log("Payment amount:", {
+      amount,
+      requestedAmount,
+      numericAmount,
+    });
+
+    if (!leaseId) {
+      setToast("Select a lease");
+      return;
+    }
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setToast("Enter a valid payment amount");
+      return;
+    }
+
+    if (numericAmount > openBalance) {
+      setToast("Payment cannot exceed the outstanding balance");
+      return;
+    }
+
     try {
-      const r = await api("/payments/create-intent", {
+      const result = await api("/payments/create-intent", {
         method: "POST",
-        body: JSON.stringify({ leaseId, amount: numeric }),
+
+        body: JSON.stringify({
+          leaseId,
+          amount: numericAmount,
+        }),
       });
-      setClientSecret(r.clientSecret);
+
+      setCheckoutAmount(result.amount ?? numericAmount);
+
+      setClientSecret(result.clientSecret);
+
       setPayOpen(true);
-    } catch (e) {
-      setToast(e.message);
+    } catch (error) {
+      console.error("Create payment intent error:", error);
+
+      setToast(error.message || "Unable to start payment");
     }
   };
 
@@ -89,7 +148,21 @@ export default function Rent() {
     setToast("Payment recorded");
     load();
   };
+
+  const selectedLeasePayments = useMemo(() => {
+    if (user.role !== "tenant" || !leaseId) {
+      return payments;
+    }
+
+    return payments.filter((payment) => {
+      const paymentLeaseId = payment.leaseId?._id || payment.leaseId;
+
+      return String(paymentLeaseId) === String(leaseId);
+    });
+  }, [payments, leaseId, user.role]);
+
   if (!charges) return <Spinner />;
+
   return (
     <>
       <PageHeader
@@ -105,8 +178,11 @@ export default function Rent() {
             <button
               className="btn primary"
               onClick={() => {
-                setAmount(openBalance.toFixed(2));
-                beginPay();
+                const fullBalance = openBalance.toFixed(2);
+
+                setAmount(fullBalance);
+
+                beginPay(fullBalance);
               }}
               disabled={!openBalance}
             >
@@ -133,26 +209,45 @@ export default function Rent() {
         </div>
         {user.role === "tenant" && (
           <div className="quick-pay">
-            <div>
-              <span className="eyebrow">Make a payment</span>
-              <h2>Pay any amount</h2>
-            </div>
-            <div className="pay-controls">
-              <div className="amount-input">
-                <span>$</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder={openBalance.toFixed(2)}
-                />
-              </div>
-              <button className="btn primary" onClick={beginPay}>
+            <Field label="Lease">
+              <select
+                value={leaseId}
+                onChange={(e) => {
+                  setLeaseId(e.target.value);
+
+                  setAmount("");
+                }}
+              >
+                <option value="">Select lease</option>
+
+                {leases
+                  .filter((lease) => lease.status === "active")
+                  .map((lease) => (
+                    <option key={lease._id} value={lease._id}>
+                      {lease.propertyId?.name} · {lease.unitId?.label}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+
+            <Field label="Payment amount">
+              <input
+                type="number"
+                min="0.50"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => beginPay()}
+                disabled={!leaseId || !openBalance}
+              >
                 Continue
               </button>
-            </div>
+            </Field>
             <small>
               Payment methods shown are controlled by your Stripe account
               configuration.
@@ -168,7 +263,7 @@ export default function Rent() {
             <h2>Rent & fees</h2>
           </div>
         </div>
-        {charges.length ? (
+        {selectedLeaseCharges.length ? (
           <div className="responsive-table">
             <table>
               <thead>
@@ -182,7 +277,7 @@ export default function Rent() {
                 </tr>
               </thead>
               <tbody>
-                {charges.map((c) => (
+                {selectedLeaseCharges.map((c) => (
                   <tr key={c._id}>
                     <td>
                       <strong>{c.description}</strong>
@@ -232,7 +327,7 @@ export default function Rent() {
             <h2>Payments</h2>
           </div>
         </div>
-        {payments.length ? (
+        {selectedLeasePayments.length ? (
           <div className="responsive-table">
             <table>
               <thead>
@@ -246,12 +341,12 @@ export default function Rent() {
                 </tr>
               </thead>
               <tbody>
-                {payments.map((p) => (
+                {selectedLeasePayments.map((p) => (
                   <tr key={p._id}>
                     <td>{shortDate(p.receivedAt || p.createdAt)}</td>
                     {user.role !== "tenant" && <td>{p.tenantId?.name}</td>}
                     <td className="capitalize">
-                      {p.method.replaceAll("_", " ")}
+                      {p.method ? p.method.replaceAll("_", " ") : "—"}
                     </td>
                     <td>
                       {p.reference ||
@@ -292,35 +387,50 @@ export default function Rent() {
         onClose={() => {
           setPayOpen(false);
           setClientSecret("");
+          setCheckoutAmount(0);
         }}
         title="Secure rent payment"
       >
         {clientSecret && stripePromise ? (
           <Elements
+            key={clientSecret}
             stripe={stripePromise}
             options={{
               clientSecret,
+
               appearance: {
                 theme: "stripe",
-                variables: { borderRadius: "10px" },
+
+                variables: {
+                  borderRadius: "10px",
+                },
               },
             }}
           >
-            <Checkout
-              amount={Number(amount || openBalance)}
-              onDone={() => {
+            <RentPaymentForm
+              amount={checkoutAmount}
+              onDone={async (paymentIntent) => {
                 setPayOpen(false);
+
                 setClientSecret("");
-                setToast(
-                  "Payment submitted. Your ledger updates after Stripe confirms it.",
-                );
-                setTimeout(load, 1500);
+
+                if (paymentIntent.status === "succeeded") {
+                  setToast("Payment successful. Updating your ledger...");
+                } else {
+                  setToast(
+                    "Payment submitted. Status will update after Stripe confirms it.",
+                  );
+                }
+
+                await load();
+
+                setTimeout(load, 2000);
               }}
             />
           </Elements>
         ) : (
           <div className="alert warning">
-            Stripe publishable key is not configured in the client.
+            Stripe publishable key is not configured.
           </div>
         )}
       </Modal>
@@ -337,8 +447,21 @@ export default function Rent() {
                 .filter((l) => l.status === "active")
                 .map((l) => (
                   <option key={l._id} value={l._id}>
-                    {l.tenantId?.name} · {l.propertyId?.name} /{" "}
-                    {l.unitId?.label}
+                    {leases
+                      .filter((lease) => lease.status === "active")
+                      .map((lease) => {
+                        const primaryTenant = lease.tenants?.find(
+                          (tenant) => tenant.role === "primary",
+                        )?.userId;
+
+                        return (
+                          <option key={lease._id} value={lease._id}>
+                            {primaryTenant?.name || "Tenant"} ·{" "}
+                            {lease.propertyId?.name} / {lease.unitId?.label}
+                          </option>
+                        );
+                      })}{" "}
+                    · {l.propertyId?.name} / {l.unitId?.label}
                   </option>
                 ))}
             </select>
@@ -389,48 +512,5 @@ export default function Rent() {
         onClose={() => setToast("")}
       />
     </>
-  );
-}
-
-function Checkout({ amount, onDone }) {
-  const stripe = useStripe(),
-    elements = useElements();
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setBusy(true);
-    setError("");
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: { return_url: window.location.href },
-      redirect: "if_required",
-    });
-    if (error) setError(error.message);
-    else if (
-      paymentIntent?.status === "succeeded" ||
-      paymentIntent?.status === "processing"
-    )
-      onDone();
-    setBusy(false);
-  };
-  return (
-    <form onSubmit={submit} className="stripe-form">
-      {/* <div className="payment-amount">
-        <span>Payment amount</span>
-        <strong>{money(amount)}</strong>
-      </div> */}
-      <PaymentElement />
-
-      <button className="btn primary full" disabled={busy || !stripe}>
-        {busy ? "Processing..." : `Pay ${money(amount)}`}
-      </button>
-      {error && <div className="alert error">{error}</div>}
-      <p className="secure-note">
-        Payment details are entered directly into Stripe’s secure payment
-        element.
-      </p>
-    </form>
   );
 }
